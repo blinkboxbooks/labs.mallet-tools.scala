@@ -6,12 +6,18 @@ import cc.mallet.topics.*;
 import java.util.*;
 import java.io.*;
 
+/**
+ * Based on a previously built topic model, classify the ePub files in the given root directory
+ * by writing the top categories for each book to the output.
+ *
+ */
 public class TopicModelClassifier {
 
     public static void main(String[] args) throws Exception {
 
-        if (args.length != 3) {
-            System.err.println("Usage: TopicModelClassifier <topic model file> <epub root dir> <output file>");
+        if (args.length != 4) {
+            System.err
+                    .println("Usage: TopicModelClassifier <topic model file> <epub root dir> <isbns file> <output file>");
             System.exit(-1);
         }
 
@@ -24,11 +30,13 @@ public class TopicModelClassifier {
 
         // Read data from ePubs.
         File bookRootDir = new File(args[1]);
-        Iterator<Instance> epubs = Epubs.bookIterator(bookRootDir, 100/* JUST TESTING! */);
+        File isbnsFile = new File(args[2]);
+        Iterator<Instance> epubs = Epubs.bookIterator(bookRootDir, 250000/* Limit for testing */, Epubs.isbns(isbnsFile));
 
         InstanceList instances = Common.createInstanceList();
 
-        File outputFile = new File(args[2]);
+        File outputFile = new File(args[3]);
+        System.out.println("Writing categories to " + outputFile);
         try (OutputStream output = new FileOutputStream(outputFile);
                 PrintWriter writer = new PrintWriter(new OutputStreamWriter(output, "UTF-8"))) {
 
@@ -42,32 +50,17 @@ public class TopicModelClassifier {
                     continue;
                 }
 
+                // System.out.println("Book content:\n" + instance.getData());
+
                 instances.addThruPipe(instance);
 
-                double[] topicProbabilities = inferencer
-                        .getSampledDistribution(instances.get(instanceCount), 1000, 1, 5);
-                List<Integer> topCategories = Epubs.getTopCategories(topicProbabilities, 10, 0.009);
+                double[] topicProbabilities = inferencer.getSampledDistribution(instances.get(instanceCount), 1000, 1,
+                        5);
+                List<IDSorter> topCategories = Epubs.getTopCategories(topicProbabilities, 15, 0.01);
 
-                System.out.println("Top categories for " + isbn + ": " + topCategories);
+                System.out.println("Top categories for " + isbn + ": " + Epubs.topicDetails(topCategories));
                 writer.println(Epubs.formatTopics(isbn, topCategories));
-
-                // // Dump probs for all the topics for this doc.
-                // for (int tpIdx = 0; tpIdx < testProbabilities.length; tpIdx++) {
-                // Formatter out = new Formatter(new StringBuilder(), Locale.US);
-                // out.format("%d\t%.6f\t", tpIdx, testProbabilities[tpIdx]);
-                // System.out.println(out);
-                // }
-                
-
-                // Show the words in the first document with scores for each.
-//                FeatureSequence tokens = (FeatureSequence) model.getData().get(0).instance.getData();
-//                LabelSequence topics = model.getData().get(0).topicSequence;
-//                Formatter out = new Formatter(new StringBuilder(), Locale.US);
-//                for (int position = 0; position < tokens.getLength(); position++) {
-//                    out.format("%s-%d ", model.getAlphabet().lookupObject(tokens.getIndexAtPosition(position)),
-//                            topics.getIndexAtPosition(position));
-//                }
-//                System.out.println(out);
+                writer.flush();
 
                 instanceCount++;
             }

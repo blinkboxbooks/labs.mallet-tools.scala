@@ -6,6 +6,9 @@ import cc.mallet.topics.*;
 import java.util.*;
 import java.io.*;
 
+/**
+ * Display content of a Mallet model previously written to a file.
+ */
 public class TopicModelDump {
 
     private static final int NUM_WORDS_PER_TOPIC = 15;

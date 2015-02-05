@@ -8,12 +8,12 @@ import java.io.*;
 
 public class BookTopicModel {
 
-    private static final int NUM_WORDS_PER_TOPIC = 5;
+    private static final int NUM_WORDS_PER_TOPIC = 15;
 
     public static void main(String[] args) throws Exception {
 
-        if (args.length < 1) {
-            System.err.println("Usage: BookTopicModel <epub root dir>");
+        if (args.length != 2) {
+            System.err.println("Usage: BookTopicModel <epub root dir> <known ISBN list>");
             System.exit(-1);
         }
 
@@ -22,9 +22,13 @@ public class BookTopicModel {
 
         // Read data from ePubs.
         File bookRootDir = new File(args[0]);
-        instances.addThruPipe(Epubs.bookIterator(bookRootDir, 5000));
+        File isbnFile = new File(args[1]);
+        Set<String> knownIsbns = Epubs.isbns(isbnFile);
+        System.out.println("Filtering epubs with " + knownIsbns.size() + " known ISBNs");
 
-        // Create a model with 100 topics, alpha_t = 0.01, beta_w = 0.01
+        instances.addThruPipe(Epubs.bookIterator(bookRootDir, 25000/*!!!*/, knownIsbns));
+
+        // Create a model with the given number of topics, alpha_t = 0.01, beta_w = 0.01
         // Note that the first parameter is passed as the sum over topics, while
         // the second is the parameter for a single dimension of the Dirichlet prior.
         int numTopics = 250;
@@ -34,11 +38,11 @@ public class BookTopicModel {
 
         // Use two parallel samplers, which each look at one half the corpus and combine
         // statistics after every iteration.
-        model.setNumThreads(4);
+        model.setNumThreads(2);
 
-        // Run the model for 50 iterations and stop (this is for testing only,
+        // Run the model for N iterations and stop (50 is for testing only,
         // for real applications, use 1000 to 2000 iterations)
-        model.setNumIterations(/* 1000 */250);
+        model.setNumIterations(1000);
         model.estimate();
 
         // Write model to file.
@@ -46,34 +50,18 @@ public class BookTopicModel {
         model.write(modelFile);
         System.out.println("Wrote model to file " + modelFile);
 
-        // Show the words and topics in the first instance
-
         // The data alphabet maps word IDs to strings
         Alphabet dataAlphabet = instances.getDataAlphabet();
-
-        FeatureSequence tokens = (FeatureSequence) model.getData().get(0).instance.getData();
-        LabelSequence topics = model.getData().get(0).topicSequence;
-
-        Formatter out = new Formatter(new StringBuilder(), Locale.US);
-        for (int position = 0; position < tokens.getLength(); position++) {
-            out.format("%s-%d ", dataAlphabet.lookupObject(tokens.getIndexAtPosition(position)),
-                    topics.getIndexAtPosition(position));
-        }
-        System.out.println(out);
-
-        // Estimate the topic distribution of the first instance,
-        // given the current Gibbs state.
-        double[] topicDistribution = model.getTopicProbabilities(0);
 
         // Get an array of sorted sets of word ID/count pairs
         ArrayList<TreeSet<IDSorter>> topicSortedWords = model.getSortedWords();
 
-        // Show top words in topics with proportions for the first document
+        // Show top words in topics.
         for (int topic = 0; topic < numTopics; topic++) {
             Iterator<IDSorter> iterator = topicSortedWords.get(topic).iterator();
 
-            out = new Formatter(new StringBuilder(), Locale.US);
-            out.format("%d\t%.3f\t", topic, topicDistribution[topic]);
+            Formatter out = new Formatter(new StringBuilder(), Locale.US);
+            out.format("%d\t", topic);
             int rank = 0;
             while (iterator.hasNext() && rank < NUM_WORDS_PER_TOPIC) {
                 IDSorter idCountPair = iterator.next();
@@ -81,28 +69,6 @@ public class BookTopicModel {
                 rank++;
             }
             System.out.println(out);
-        }
-
-        // Create a new instance with high probability of topic 0
-        StringBuilder topicZeroText = new StringBuilder();
-        Iterator<IDSorter> iterator = topicSortedWords.get(0).iterator();
-
-        int rank = 0;
-        while (iterator.hasNext() && rank < NUM_WORDS_PER_TOPIC) {
-            IDSorter idCountPair = iterator.next();
-            topicZeroText.append(dataAlphabet.lookupObject(idCountPair.getID()) + " ");
-            rank++;
-        }
-
-        // Create a new instance named "test instance" with empty target and source fields.
-        InstanceList testing = new InstanceList(instances.getPipe());
-        testing.addThruPipe(new Instance(topicZeroText.toString(), null, "test instance", null));
-
-        TopicInferencer inferencer = model.getInferencer();
-        double[] testProbabilities = inferencer.getSampledDistribution(testing.get(0), 10, 1, 5);
-
-        for (int tpIdx = 0; tpIdx < testProbabilities.length; tpIdx++) {
-            System.out.println(tpIdx + "\t" + testProbabilities[tpIdx]);
         }
 
     }
